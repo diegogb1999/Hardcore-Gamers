@@ -11,3 +11,10 @@ SELECT * FROM users;
 SELECT * FROM users_achievements;
 
 SELECT COUNT(*) FROM games;
+SELECT COUNT(id) FROM games;
+SELECT * FROM games WHERE slug = 'crash-bandicoot-warped';
+
+OPTIMIZE TABLE games;
+
+TRUNCATE TABLE games;
+

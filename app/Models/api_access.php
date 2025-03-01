@@ -2,6 +2,155 @@
 
 require 'C:/xampp/htdocs/PHP/config/sensible_data.php';
 
+function fetch_from_rawg($url)
+{
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return json_decode($response, true);
+}
+
+function game_exists($pdo, $slug)
+{
+    $stmt = $pdo->prepare("SELECT 1 FROM games WHERE slug = ? LIMIT 1");
+    $stmt->execute([$slug]);
+    return $stmt->fetchColumn();
+}
+
+function insert_game($pdo, $game_detail)
+{
+    $stmt = $pdo->prepare("CALL InsertGame(:title, :info, :release_date, :developer, :img, :purchase_url, :slug, :rating, :trailer, :achievements, @game_id)");
+    $stmt->execute([
+        ':title' => $game_detail['name'],
+        ':info' => strip_tags($game_detail['description'] ?? ''),
+        ':release_date' => $game_detail['released'] ?? null,
+        ':developer' => $game_detail['developers'][0]['name'] ?? 'Desconocido',
+        ':img' => $game_detail['background_image'] ?? '',
+        ':purchase_url' => $game_detail['website'] ?? '',
+        ':slug' => $game_detail['slug'],
+        ':rating' => $game_detail['rating'],
+        ':trailer' => $game_detail['movies'][0]['data']['max'] ?? '',
+        ':achievements' => $game_detail['achievements_count'] ?? 0
+    ]);
+    return $pdo->query("SELECT @game_id")->fetchColumn();
+}
+
+function insert_genres($pdo, $game_id, $genres)
+{
+    foreach ($genres as $genre) {
+        $stmt = $pdo->prepare("CALL InsertGenre(:title, :slug, :img, @genre_id)");
+        $stmt->execute([
+            ':title' => $genre['name'],
+            ':slug' => $genre['slug'],
+            ':img' => $genre['image_background'] ?? ''
+        ]);
+        $genre_id = $pdo->query("SELECT @genre_id")->fetchColumn();
+
+        $stmt = $pdo->prepare("CALL InsertGameGenre(:game_id, :genre_id)");
+        $stmt->execute([
+            ':game_id' => $game_id,
+            ':genre_id' => $genre_id
+        ]);
+    }
+}
+
+function insert_platforms($pdo, $game_id, $platforms)
+{
+    foreach ($platforms as $platform) {
+        $stmt = $pdo->prepare("CALL InsertPlatform(:title, :slug, :img, @platform_id)");
+        $stmt->execute([
+            ':title' => $platform['platform']['name'],
+            ':slug' => $platform['platform']['slug'],
+            ':img' => $platform['platform']['image_background'] ?? ''
+        ]);
+        $platform_id = $pdo->query("SELECT @platform_id")->fetchColumn();
+
+        $stmt = $pdo->prepare("CALL InsertGamePlatform(:game_id, :platform_id)");
+        $stmt->execute([
+            ':game_id' => $game_id,
+            ':platform_id' => $platform_id
+        ]);
+    }
+}
+
+function insert_achievements($pdo, $game_id, $game_api_id, $api_key)
+{
+    $achievements = fetch_from_rawg("https://api.rawg.io/api/games/{$game_api_id}/achievements?key=$api_key");
+    if (!empty($achievements['results'])) {
+        foreach ($achievements['results'] as $achievement) {
+            $stmt = $pdo->prepare("CALL InsertAchievement(:game_id, :title, :info, :img)");
+            $stmt->execute([
+                ':game_id' => $game_id,
+                ':title' => $achievement['name'],
+                ':info' => $achievement['description'],
+                ':img' => $achievement['image'] ?? ''
+            ]);
+        }
+    }
+}
+
+function save_games($pdo, $api_key)
+{
+    ini_set('max_execution_time', 3600);
+
+    $total_inserted = $pdo->query("SELECT COUNT(*) FROM games")->fetchColumn();
+    $page = ceil($total_inserted / get_page_size($api_key));
+
+    $games_fetched = 0;
+    $max_games = 10;
+
+    while ($games_fetched < $max_games) {
+        $url = "https://api.rawg.io/api/games?page=$page&page_size=40&key=$api_key";
+        $data = fetch_from_rawg($url);
+
+        if (!isset($data['results'])) {
+            die("Error al obtener datos de la API.");
+        }
+
+        foreach ($data['results'] as $game) {
+            if (game_exists($pdo, $game['slug'])) {
+                echo "El juego '{$game['name']}' ya existe en la base de datos (slug: {$game['slug']}). Pasando al siguiente...\n";
+                continue;
+            }
+
+            $game_detail = fetch_from_rawg("https://api.rawg.io/api/games/{$game['id']}?key=$api_key");
+
+            $game_id = insert_game($pdo, $game_detail);
+            if ($game_id) {
+                if (!empty($game_detail['genres'])) {
+                    insert_genres($pdo, $game_id, $game_detail['genres']);
+                }
+                if (!empty($game_detail['platforms'])) {
+                    insert_platforms($pdo, $game_id, $game_detail['platforms']);
+                }
+                insert_achievements($pdo, $game_id, $game['id'], $api_key);
+            }
+
+            $games_fetched++;
+            if ($games_fetched >= $max_games) break;
+        }
+
+        $page++;
+    }
+}
+
+function get_page_size($api_key)
+{
+    $url = "https://api.rawg.io/api/games?page=4&key=$api_key";
+    $data = fetch_from_rawg($url);
+    $page_size = count($data['results']);
+    return $page_size;
+}
+
+
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_page_size'])) {
+    echo get_page_size($api_key);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
@@ -12,126 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         die("Error de conexión a la base de datos: " . $e->getMessage());
     }
 
-    // Función para obtener datos desde RAWG.io
-    function fetch_from_rawg($url)
-    {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        $response = curl_exec($ch);
-        curl_close($ch);
-        return json_decode($response, true);
-    }
-
-    // Obtener y guardar juegos en la base de datos
-    function save_games($pdo, $api_key)
-    {
-        ini_set('max_execution_time', 3600);
-
-        $page = 1;
-        $games_fetched = 0;
-        $max_games = 1000;
-
-        while ($games_fetched < $max_games) {
-            $url = "https://api.rawg.io/api/games?page=$page&page_size=40&key=$api_key";
-            $data = fetch_from_rawg($url);
-
-            if (!isset($data['results'])) {
-                die("Error al obtener datos de la API.");
-            }
-
-            foreach ($data['results'] as $game) {
-
-                $game_detail = fetch_from_rawg("https://api.rawg.io/api/games/{$game['id']}?key=$api_key");
-
-                $stmt = $pdo->prepare("INSERT INTO games (title, info, release_date, developer, img, purchase_url, slug, rating, trailer, achievements_amount) 
-                                   VALUES (:title, :info, :release_date, :developer, :img, :purchase_url, :slug, :rating, :trailer, :achievements)");
-                $stmt->execute([
-                    ':title' => $game_detail['name'],
-                    ':info' => $game_detail['description'] ?? '',
-                    ':release_date' => $game_detail['released'] ?? null,
-                    ':developer' => $game_detail['developers'][0]['name'] ?? 'Desconocido',
-                    ':img' => $game_detail['background_image'] ?? '',
-                    ':purchase_url' => $game_detail['website'] ?? '',
-                    ':slug' => $game_detail['slug'],
-                    ':rating' => $game_detail['rating'],
-                    ':trailer' => $game_detail['movies'][0]['data']['max'] ?? '',
-                    ':achievements' => $game_detail['achievements_count'] ?? 0
-                ]);
-                $game_id = $pdo->lastInsertId();
-
-                if (!empty($game_detail['genres'])) {
-                    foreach ($game_detail['genres'] as $genre) {
-                        $stmt = $pdo->prepare("INSERT IGNORE INTO genres (title, slug, img) VALUES (:title, :slug, :img)");
-                        $stmt->execute([
-                            ':title' => $genre['name'],
-                            ':slug' => $genre['slug'],
-                            ':img' => $genre['image_background'] ?? ''
-                        ]);
-
-                        $genre_id = $pdo->lastInsertId();
-                        if (!$genre_id) {
-                            $stmt = $pdo->prepare("SELECT id FROM genres WHERE slug = :slug");
-                            $stmt->execute([':slug' => $genre['slug']]);
-                            $genre_id = $stmt->fetchColumn();
-                        }
-
-                        $stmt = $pdo->prepare("INSERT IGNORE INTO games_genres (game_id, genre_id) VALUES (:game_id, :genre_id)");
-                        $stmt->execute([
-                            ':game_id' => $game_id,
-                            ':genre_id' => $genre_id
-                        ]);
-                    }
-                }
-
-                if (!empty($game_detail['platforms'])) {
-                    foreach ($game_detail['platforms'] as $platform) {
-                        $stmt = $pdo->prepare("INSERT IGNORE INTO platforms (title, slug, img) VALUES (:title, :slug, :img)");
-                        $stmt->execute([
-                            ':title' => $platform['platform']['name'],
-                            ':slug' => $platform['platform']['slug'],
-                            ':img' => $platform['platform']['image_background'] ?? ''
-                        ]);
-
-                        $platform_id = $pdo->lastInsertId();
-                        if (!$platform_id) {
-                            $stmt = $pdo->prepare("SELECT id FROM platforms WHERE slug = :slug");
-                            $stmt->execute([':slug' => $platform['platform']['slug']]);
-                            $platform_id = $stmt->fetchColumn();
-                        }
-
-                        $stmt = $pdo->prepare("INSERT IGNORE INTO games_platforms (game_id, platform_id) VALUES (:game_id, :platform_id)");
-                        $stmt->execute([
-                            ':game_id' => $game_id,
-                            ':platform_id' => $platform_id
-                        ]);
-                    }
-                }
-
-                $achievements = fetch_from_rawg("https://api.rawg.io/api/games/{$game['id']}/achievements?key=$api_key");
-                if (!empty($achievements['results'])) {
-                    foreach ($achievements['results'] as $achievement) {
-                        $stmt = $pdo->prepare("INSERT INTO achievements (game_id, title, info, img) VALUES (:game_id, :title, :info, :img)");
-                        $stmt->execute([
-                            ':game_id' => $game_id,
-                            ':title' => $achievement['name'],
-                            ':info' => $achievement['description'],
-                            ':img' => $achievement['image'] ?? ''
-                        ]);
-                    }
-                }
-
-                $games_fetched++;
-                if ($games_fetched >= $max_games) break;
-            }
-
-            $page++;
-        }
-    }
-
     save_games($pdo, $api_key);
 
     echo "¡Importación completada con éxito!";
-} else {
-    echo "Acceso no autorizado.";
+    exit;
 }
