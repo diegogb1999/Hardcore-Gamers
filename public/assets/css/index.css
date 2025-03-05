@@ -6,10 +6,18 @@
           color: #f8f9fa;
       }
 
+      h2 {
+          text-align: center;
+      }
+
+      h3 {
+          text-align: center;
+      }
+
       table {
           margin: auto;
+          width: 90%;
           border-collapse: collapse;
-          width: 70%;
           border-collapse: collapse;
           border: 3px solid black;
       }
@@ -82,4 +90,50 @@
       .pagination .disabled span {
           color: #777;
           cursor: not-allowed;
+      }
+
+      .container {
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          gap: 10px;
+      }
+
+      .right-container {
+          flex-grow: 2;
+      }
+
+      .left-container {
+
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+          align-items: center;
+          align-content: center;
+          justify-content: center;
+      }
+
+      .left-container .searchBar {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+
+          margin: 20px auto;
+          border-radius: 5px;
+          border: 1px solid #ccc;
+      }
+
+      .amount {
+          margin: 20px auto;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+      }
+
+      .filter-button {
+          display: block;
+          margin: 30px auto;
       }
