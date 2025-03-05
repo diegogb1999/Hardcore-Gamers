@@ -1,12 +1,12 @@
 <?php
-
-require 'C:/xampp/htdocs/PHP/config/sensible_data.php';
+require_once 'C:/xampp/htdocs/PHP/app/Models/ddbb_access.php';
 
 function fetch_from_rawg($url)
 {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_FAILONERROR, true);
     $response = curl_exec($ch);
     curl_close($ch);
     return json_decode($response, true);
@@ -93,16 +93,14 @@ function insert_achievements($pdo, $game_id, $game_api_id, $api_key)
 
 function save_games($pdo, $api_key)
 {
-    ini_set('max_execution_time', 3600);
+    ini_set('max_execution_time', 60);
 
-    $total_inserted = $pdo->query("SELECT COUNT(*) FROM games")->fetchColumn();
-    $page = ceil($total_inserted / get_page_size($api_key));
-
+    $page = 1;
     $games_fetched = 0;
-    $max_games = 10;
+    $max_games = 40;
 
     while ($games_fetched < $max_games) {
-        $url = "https://api.rawg.io/api/games?page=$page&page_size=40&key=$api_key";
+        $url = "https://api.rawg.io/api/games?page=$page&key=$api_key";
         $data = fetch_from_rawg($url);
 
         if (!isset($data['results'])) {
@@ -136,31 +134,9 @@ function save_games($pdo, $api_key)
     }
 }
 
-function get_page_size($api_key)
-{
-    $url = "https://api.rawg.io/api/games?page=4&key=$api_key";
-    $data = fetch_from_rawg($url);
-    $page_size = count($data['results']);
-    return $page_size;
-}
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_page_size'])) {
-    echo get_page_size($api_key);
-    exit;
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    try {
-        $pdo = new PDO($dsn, $username, $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-        ]);
-    } catch (PDOException $e) {
-        die("Error de conexión a la base de datos: " . $e->getMessage());
-    }
-
+    $pdo = access_ddbb($dsn, $username, $password);
     save_games($pdo, $api_key);
 
     echo "¡Importación completada con éxito!";
