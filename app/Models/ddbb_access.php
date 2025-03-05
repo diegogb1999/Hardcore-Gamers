@@ -13,7 +13,7 @@ function access_ddbb($dsn, $username, $password)
     return $pdo;
 }
 
-function get_games_with_details($dsn, $username, $password, $search, $selected_genres, $selected_platforms, $order_by, $order_dir)
+function get_games_with_details($dsn, $username, $password, $search, $selected_genres, $selected_platforms, $order_by, $order_dir, $items_per_page, $offset)
 {
     $pdo = access_ddbb($dsn, $username, $password);
 
@@ -60,7 +60,7 @@ function get_games_with_details($dsn, $username, $password, $search, $selected_g
         $params[] = count($selected_platforms);
     }
 
-    $query .= " ORDER BY $order_by $order_dir";
+    $query .= " ORDER BY $order_by $order_dir LIMIT " . intval($items_per_page) . " OFFSET " . intval($offset);
 
 
     $stmt = $pdo->prepare($query);
@@ -73,4 +73,42 @@ function get_games_with_details($dsn, $username, $password, $search, $selected_g
     }
 
     return $games;
+}
+
+function count_total_games($dsn, $username, $password, $search, $selected_genres, $selected_platforms)
+{
+    $pdo = access_ddbb($dsn, $username, $password);
+
+    $query = "SELECT COUNT(DISTINCT g.id) FROM games g WHERE g.title LIKE ?";
+    $params = ["%$search%"];
+
+    if (!empty($selected_genres)) {
+        $placeholders = implode(',', array_fill(0, count($selected_genres), '?'));
+        $query .= " AND g.id IN (
+            SELECT gg.game_id FROM games_genres gg 
+            JOIN genres gen ON gg.genre_id = gen.id 
+            WHERE gen.title IN ($placeholders) 
+            GROUP BY gg.game_id 
+            HAVING COUNT(DISTINCT gen.id) = ?
+        )";
+        $params = array_merge($params, $selected_genres);
+        $params[] = count($selected_genres);
+    }
+
+    if (!empty($selected_platforms)) {
+        $placeholders = implode(',', array_fill(0, count($selected_platforms), '?'));
+        $query .= " AND g.id IN (
+            SELECT gp.game_id FROM games_platforms gp 
+            JOIN platforms plat ON gp.platform_id = plat.id 
+            WHERE plat.title IN ($placeholders) 
+            GROUP BY gp.game_id 
+            HAVING COUNT(DISTINCT plat.id) = ?
+        )";
+        $params = array_merge($params, $selected_platforms);
+        $params[] = count($selected_platforms);
+    }
+
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
+    return $stmt->fetchColumn();
 }

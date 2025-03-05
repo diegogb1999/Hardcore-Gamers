@@ -12,7 +12,14 @@ $selected_platforms = $_GET['platforms'] ?? [];
 $order_by = $_GET['order_by'] ?? 'title';
 $order_dir = ($_GET['order_dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
 
-$games = get_games_with_details($dsn, $username, $password, $search, $selected_genres, $selected_platforms, $order_by, $order_dir);
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$items_per_page = $_GET['items_per_page'] ?? 10;
+$offset = ($page - 1) * $items_per_page;
+$current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+
+$games = get_games_with_details($dsn, $username, $password, $search, $selected_genres, $selected_platforms, $order_by, $order_dir, $items_per_page, $offset);
+$total_games = count_total_games($dsn, $username, $password, $search, $selected_genres, $selected_platforms);
+$total_pages = ceil($total_games / $items_per_page);
 ?>
 
 
@@ -20,75 +27,11 @@ $games = get_games_with_details($dsn, $username, $password, $search, $selected_g
 <html lang="es">
 
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../public/assets/css/index.css">
+    <link rel="icon" type="image/x-icon" href="../images/favicon.ico">
     <title>Hardcore Gamers</title>
-
-    <script>
-        function fetchPageSize() {
-            fetch('http://localhost/PHP/app/Models/api_access.php?get_page_size')
-                .then(response => response.text())
-                .then(data => {
-                    document.getElementById('result').innerText = "Page Size: " + data;
-                })
-                .catch(error => {
-                    console.error("Error obteniendo el page_size:", error);
-                });
-        }
-
-        function applyFilters() {
-            let searchQuery = document.getElementById("search").value.toLowerCase();
-            let checkedGenres = Array.from(document.querySelectorAll('input[name="genres[]"]:checked')).map(el => el.value);
-            let checkedPlatforms = Array.from(document.querySelectorAll('input[name="platforms[]"]:checked')).map(el => el.value);
-            let orderBy = document.getElementById("order_by").value;
-            let orderDir = document.getElementById("order_dir").value;
-
-            let filteredGames = gamesData.filter(game => {
-                let matchesSearch = game.title.toLowerCase().includes(searchQuery);
-                let matchesGenre = checkedGenres.length === 0 || checkedGenres.some(genre => game.genres.includes(genre));
-                let matchesPlatform = checkedPlatforms.length === 0 || checkedPlatforms.some(platform => game.platforms.includes(platform));
-                return matchesSearch && matchesGenre && matchesPlatform;
-            });
-
-            filteredGames.sort((a, b) => {
-                let valueA = a[orderBy] || "";
-                let valueB = b[orderBy] || "";
-
-                if (typeof valueA === "string") valueA = valueA.toLowerCase();
-                if (typeof valueB === "string") valueB = valueB.toLowerCase();
-
-                return (orderDir === "ASC") ? (valueA > valueB ? 1 : -1) : (valueA < valueB ? 1 : -1);
-            });
-
-            renderTable(filteredGames);
-        }
-    </script>
-
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-            cursor: default !important;
-        }
-
-        th {
-            cursor: pointer;
-            background-color: #f2f2f2;
-        }
-
-        img {
-            max-width: 100px;
-        }
-    </style>
-
 </head>
 
 <body>
@@ -97,10 +40,6 @@ $games = get_games_with_details($dsn, $username, $password, $search, $selected_g
     <form action="http://localhost/PHP/app/Models/api_access.php?save_games" method="POST">
         <button type="submit">Importar Juegos</button>
     </form>
-
-    <!-- <h2>Ver Page Size de RAWG.io</h2>
-    <button onclick="fetchPageSize()">Obtener Page Size</button>
-    <p id="result"></p> -->
 
     <h2>Lista de Juegos</h2>
 
@@ -132,17 +71,56 @@ $games = get_games_with_details($dsn, $username, $password, $search, $selected_g
                 <?php endforeach; ?>
             </div>
         </div>
+
+        <label for="items_per_page">Mostrar:</label>
+        <select name="items_per_page" id="items_per_page">
+            <option value="5" <?= ($items_per_page == 5) ? 'selected' : '' ?>>5</option>
+            <option value="10" <?= ($items_per_page == 10) ? 'selected' : '' ?>>10</option>
+            <option value="20" <?= ($items_per_page == 20) ? 'selected' : '' ?>>20</option>
+            <option value="50" <?= ($items_per_page == 50) ? 'selected' : '' ?>>50</option>
+            <option value="100" <?= ($items_per_page == 100) ? 'selected' : '' ?>>100</option>
+            <option value="500" <?= ($items_per_page == 500) ? 'selected' : '' ?>>500</option>
+        </select>
+
         <button type="submit">Aplicar Filtros</button>
+
     </form>
+
+    <nav class="pagination">
+        <ul style="list-style: none; display: flex; gap: 5px;">
+            <li class="<?= ($current_page == 1) ? 'disabled' : '' ?>">
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => 1])) ?>">⏪</a>
+            </li>
+            <li class="<?= ($current_page == 1) ? 'disabled' : '' ?>">
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">◀️</a>
+            </li>
+
+            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                <li class="<?= ($current_page == $i) ? 'active' : '' ?>">
+                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"
+                        style="<?= $i == $page ? 'font-weight: bold; text-decoration: underline;' : '' ?>">
+                        <?= $i ?>
+                    </a>
+                </li>
+            <?php endfor; ?>
+
+            <li class="<?= ($current_page == $total_pages) ? 'disabled' : '' ?>">
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">▶️</a>
+            </li>
+            <li class="<?= ($current_page == $total_pages) ? 'disabled' : '' ?>">
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => $total_pages])) ?>">⏩</a>
+            </li>
+        </ul>
+    </nav>
 
     <table>
         <thead>
             <tr>
-                <th>Imagen</th>
-                <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'title', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Título</a></th>
+                <th></th>
+                <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'title', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Juego</a></th>
                 <th>Género</th>
                 <th>Plataformas</th>
-                <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'release_date', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Fecha de Salida</a></th>
+                <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'release_date', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Lanzamiento</a></th>
                 <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'developer', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Desarrollador</a></th>
                 <th><a href="?<?= http_build_query(array_merge($_GET, ['order_by' => 'rating', 'order_dir' => $order_dir === 'ASC' ? 'DESC' : 'ASC'])) ?>">Puntuación</a></th>
             </tr>

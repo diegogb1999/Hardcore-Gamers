@@ -95,7 +95,7 @@ function save_games($pdo, $api_key)
 {
     ini_set('max_execution_time', 60);
 
-    $page = 1; //$total_inserted = $pdo->query("SELECT COUNT(*) FROM games")->fetchColumn(); ceil($total_inserted / get_page_size($api_key));
+    $page = 1;
     $games_fetched = 0;
     $max_games = 40;
 
@@ -142,18 +142,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     echo "¡Importación completada con éxito!";
     exit;
 }
-
-/*function get_page_size($api_key)
-{
-    $url = "https://api.rawg.io/api/games?page=1&key=$api_key";
-    $data = fetch_from_rawg($url);
-    $page_size = count($data['results']);
-    return $page_size;
-}
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_page_size'])) {
-    echo get_page_size($api_key);
-    exit;
-}*/
