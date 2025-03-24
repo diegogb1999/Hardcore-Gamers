@@ -1,5 +1,5 @@
 <?php
-require_once 'C:/xampp/htdocs/PHP/config/sensible_data.php';
+require_once __DIR__ . '/../../config/sensible_data.php';
 
 function access_ddbb($dsn, $username, $password)
 {

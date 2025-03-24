@@ -1,5 +1,5 @@
 <?php
-require_once 'C:/xampp/htdocs/PHP/app/Models/ddbb_access.php';
+require_once __DIR__ . '/../app/Models/ddbb_access.php';
 
 $pdo = access_ddbb($dsn, $username, $password);
 
@@ -164,7 +164,7 @@ if ($end_page - $start_page < $max_visible_pages - 1) {
     </div>
 
     <h1>Importar Juegos desde RAWG.io</h1>
-    <form action="http://localhost/PHP/app/Models/api_access.php?save_games" method="POST">
+    <form action="/app/Models/api_access.php?save_games" method="POST">
         <button type="submit">Importar Juegos</button>
     </form>
 

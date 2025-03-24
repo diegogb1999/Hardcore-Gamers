@@ -1,5 +1,6 @@
 <?php
-require_once 'C:/xampp/htdocs/PHP/app/Models/ddbb_access.php';
+//require_once 'C:/xampp/htdocs/PHP/app/Models/ddbb_access.php';
+require_once __DIR__ . '/ddbb_access.php';
 
 function fetch_from_rawg($url)
 {
@@ -93,11 +94,11 @@ function insert_achievements($pdo, $game_id, $game_api_id, $api_key)
 
 function save_games($pdo, $api_key)
 {
-    ini_set('max_execution_time', 60);
+    ini_set('max_execution_time', 120);
 
     $page = 1;
     $games_fetched = 0;
-    $max_games = 40;
+    $max_games = 70;
 
     while ($games_fetched < $max_games) {
         $url = "https://api.rawg.io/api/games?page=$page&key=$api_key";
